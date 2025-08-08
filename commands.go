@@ -17,19 +17,14 @@ type LoudnessInfo struct {
 	Offset string `json:"target_offset"`
 }
 
-type Audiofile struct {
-	Path   string
-	IsOpus bool
-}
-
 /*
  * Commands used during loudness normalization
  */
 
 // Extract the sample rate of an audio file.
 func extractSampleRate(file string) (string, error) {
-	args := []string{"ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=sample_rate", "-of", "default=noprint_wrappers=1:nokey=1", file}
-	ffmpeg := exec.Command(args[0], args[1:]...)
+	args := []string{"-v", "error", "-select_streams", "a:0", "-show_entries", "stream=sample_rate", "-of", "default=noprint_wrappers=1:nokey=1", file}
+	ffmpeg := exec.Command("ffprobe", args...)
 	output, err := ffmpeg.Output()
 	if err != nil {
 		return "", err
@@ -40,22 +35,12 @@ func extractSampleRate(file string) (string, error) {
 // Extract the bitrate of an audio file.
 func extractBitrate(file Audiofile) (string, error) {
 	if file.IsOpus {
-		// ignore the error here as one is thrown even if the bitrate is extracted successfully
-		opusinfo := exec.Command("opusinfo", file.Path)
-		output, _ := opusinfo.Output()
-		lines := strings.SplitSeq(string(output), "\n")
-		for line := range lines {
-			if !strings.HasSuffix(line, "kbit/s") {
-				continue
-			}
-
-			return fmt.Sprintf("%sk", strings.Split(strings.TrimSpace(line), " ")[6]), nil
-		}
-		return "", fmt.Errorf("No information about the files bitrate could be found.")
+		// return 128kbit/s as a good default for opus
+		return "128000", nil
 	}
 
-	args := []string{"ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "format=bit_rate", "-of", "default=noprint_wrappers=1:nokey=1", file.Path}
-	ffmpeg := exec.Command(args[0], args[1:]...)
+	args := []string{"-v", "error", "-select_streams", "a:0", "-show_entries", "format=bit_rate", "-of", "default=noprint_wrappers=1:nokey=1", file.Path}
+	ffmpeg := exec.Command("ffprobe", args...)
 	output, err := ffmpeg.Output()
 	if err != nil {
 		return "", err
@@ -65,8 +50,8 @@ func extractBitrate(file Audiofile) (string, error) {
 
 // First pass with ffmpeg to analyze the loudness of an audio file.
 func extractLoudnessInfo(file string) (LoudnessInfo, error) {
-	ffmpegArgs := []string{"ffmpeg", "-i", file, "-af", "loudnorm=print_format=json", "-nostats", "-hide_banner", "-f", "null", "-"}
-	ffmpeg := exec.Command(ffmpegArgs[0], ffmpegArgs[1:]...)
+	ffmpegArgs := []string{"-i", file, "-af", "loudnorm=print_format=json", "-nostats", "-hide_banner", "-f", "null", "-"}
+	ffmpeg := exec.Command("ffmpeg", ffmpegArgs...)
 	output, err := ffmpeg.CombinedOutput()
 	if err != nil {
 		return LoudnessInfo{}, err
@@ -86,14 +71,49 @@ func extractLoudnessInfo(file string) (LoudnessInfo, error) {
 // Second pass with ffmpeg to normalize the loudness.
 func normalizeLoudness(file Audiofile, outpath string, targetLoudness float64, loudnessInfo LoudnessInfo, sampleRate string, bitrate string) error {
 	loudnorm := fmt.Sprintf("loudnorm=linear=true:I=%.2f:LRA=7.0:TP=-2.0:offset=%s:measured_I=%s:measured_TP=%s:measured_LRA=%s:measured_thresh=%s", targetLoudness, loudnessInfo.Offset, loudnessInfo.I, loudnessInfo.TP, loudnessInfo.LRA, loudnessInfo.Thresh)
-	args := []string{"ffmpeg", "-i", file.Path, "-af", loudnorm, "-ar", sampleRate, "-b:a", bitrate}
+	args := []string{"-i", file.Path, "-af", loudnorm, "-ar", sampleRate, "-b:a", bitrate}
 	if !file.IsOpus {
-		args = append(args, []string{"-map", "0", "-map_metadata", "0"}...)
+		args = append(args, []string{"-map", "0", "-map_metadata", "0", outpath}...)
 	} else {
-		args = append(args, []string{"-map_metadata", "0"}...)
+		args = append(args, []string{"-map_metadata", "0", outpath}...)
 	}
-	args = append(args, outpath)
-	ffmpeg := exec.Command(args[0], args[1:]...)
+	ffmpeg := exec.Command("ffmpeg", args...)
+	err := ffmpeg.Run()
+	return err
+}
+
+/*
+ * Commands used during conversion
+ */
+
+// Reformat the audio file
+func convert(file Audiofile, outpath string, sampleRate string, bitrate string) error {
+	args := []string{"-i", file.Path, "-ar", sampleRate, "-b:a", bitrate}
+	if !file.IsOpus {
+		args = append(args, []string{"-map", "0", "-map_metadata", "0", outpath}...)
+	} else {
+		args = append(args, []string{"-map_metadata", "0", outpath}...)
+	}
+	ffmpeg := exec.Command("ffmpeg", args...)
+	fmt.Println(ffmpeg.String())
+	err := ffmpeg.Run()
+	return err
+}
+
+/*
+ * Commands used during resampling
+ */
+
+// Resample an audio file
+func resample(file Audiofile, outpath string, targetSampleRate int, bitrate string) error {
+	args := []string{"-i", file.Path, "-ar", fmt.Sprintf("%d", targetSampleRate), "-b:a", bitrate}
+	if !file.IsOpus {
+		args = append(args, []string{"-map", "0", "-map_metadata", "0", outpath}...)
+	} else {
+		args = append(args, []string{"-map_metadata", "0", outpath}...)
+	}
+	ffmpeg := exec.Command("ffmpeg", args...)
+	fmt.Println(ffmpeg.String())
 	err := ffmpeg.Run()
 	return err
 }
@@ -105,8 +125,7 @@ func normalizeLoudness(file Audiofile, outpath string, targetLoudness float64, l
 // Extract the embedded cover.
 func extractCover(file Audiofile) (bool, error) {
 	if file.IsOpus {
-		args := []string{"opustags", "--output-cover", "cover.jpg", file.Path, "-i"}
-		opustags := exec.Command(args[0], args[1:]...)
+		opustags := exec.Command("opustags", "--output-cover", "cover.jpg", file.Path, "-i")
 		err := opustags.Run()
 		if err != nil {
 			return false, err
@@ -135,16 +154,15 @@ func extractCover(file Audiofile) (bool, error) {
 // Embed a given image as a cover.
 func setCover(file Audiofile, cover string) error {
 	if file.IsOpus {
-		args := []string{"opustags", "--set-cover", cover, file.Path, "-i"}
-		opustags := exec.Command(args[0], args[1:]...)
+		opustags := exec.Command("opustags", "--set-cover", cover, file.Path, "-i")
 		err := opustags.Run()
 		return err
 	}
 
 	ext := filepath.Ext(file.Path)
 	tempfile := fmt.Sprintf("temp%s", ext)
-	args := []string{"ffmpeg", "-i", file.Path, "-i", cover, "-map", "0", "-map 1", "-c", "copy", "-metadata:s:v", "title=\"Album cover\"", "-metadata:s:v", "comment=\"Cover (front)\"", tempfile}
-	ffmpeg := exec.Command(args[0], args[1:]...)
+	args := []string{"-i", file.Path, "-i", cover, "-map", "0", "-map 1", "-c", "copy", "-metadata:s:v", "title=\"Album cover\"", "-metadata:s:v", "comment=\"Cover (front)\"", tempfile}
+	ffmpeg := exec.Command("ffmpeg", args...)
 	err := ffmpeg.Run()
 	if err != nil {
 		return err
