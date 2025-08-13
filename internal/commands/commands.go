@@ -35,7 +35,7 @@ func ExtractSampleRate(file string) (string, error) {
 }
 
 // Extract the bitrate of an audio file.
-func ExtractBitrate(file lib.Audiofile) (string, error) {
+func ExtractBitrate(file lib.Mediafile) (string, error) {
 	if file.IsOpus {
 		// return 128kbit/s as a good default for opus
 		return "128000", nil
@@ -71,7 +71,7 @@ func ExtractLoudnessInfo(file string) (LoudnessInfo, error) {
 }
 
 // Second pass with ffmpeg to normalize the loudness.
-func NormalizeLoudness(file lib.Audiofile, outpath string, targetLoudness float64, loudnessInfo LoudnessInfo, sampleRate string, bitrate string) error {
+func NormalizeLoudness(file lib.Mediafile, outpath string, targetLoudness float64, loudnessInfo LoudnessInfo, sampleRate string, bitrate string) error {
 	loudnorm := fmt.Sprintf("loudnorm=linear=true:I=%.2f:LRA=7.0:TP=-2.0:offset=%s:measured_I=%s:measured_TP=%s:measured_LRA=%s:measured_thresh=%s", targetLoudness, loudnessInfo.Offset, loudnessInfo.I, loudnessInfo.TP, loudnessInfo.LRA, loudnessInfo.Thresh)
 	args := []string{"-i", file.Path, "-af", loudnorm, "-ar", sampleRate, "-b:a", bitrate}
 	if !file.IsOpus {
@@ -81,7 +81,11 @@ func NormalizeLoudness(file lib.Audiofile, outpath string, targetLoudness float6
 	}
 	ffmpeg := exec.Command("ffmpeg", args...)
 	err := ffmpeg.Run()
-	return err
+	if err != nil {
+		return err
+	}
+
+	return lib.RenameTempFile(file, outpath)
 }
 
 /*
@@ -89,7 +93,7 @@ func NormalizeLoudness(file lib.Audiofile, outpath string, targetLoudness float6
  */
 
 // Reformat the audio file
-func Convert(file lib.Audiofile, outpath string, sampleRate string, bitrate string) error {
+func Convert(file lib.Mediafile, outpath string, sampleRate string, bitrate string) error {
 	args := []string{"-i", file.Path, "-ar", sampleRate, "-b:a", bitrate}
 	if !file.IsOpus {
 		args = append(args, []string{"-map", "0", "-map_metadata", "0", outpath}...)
@@ -97,9 +101,12 @@ func Convert(file lib.Audiofile, outpath string, sampleRate string, bitrate stri
 		args = append(args, []string{"-map_metadata", "0", outpath}...)
 	}
 	ffmpeg := exec.Command("ffmpeg", args...)
-	fmt.Println(ffmpeg.String())
 	err := ffmpeg.Run()
-	return err
+	if err != nil {
+		return err
+	}
+
+	return lib.RenameTempFile(file, outpath)
 }
 
 /*
@@ -107,7 +114,7 @@ func Convert(file lib.Audiofile, outpath string, sampleRate string, bitrate stri
  */
 
 // Resample an audio file
-func Resample(file lib.Audiofile, outpath string, targetSampleRate int, bitrate string) error {
+func Resample(file lib.Mediafile, outpath string, targetSampleRate int, bitrate string) error {
 	args := []string{"-i", file.Path, "-ar", fmt.Sprintf("%d", targetSampleRate), "-b:a", bitrate}
 	if !file.IsOpus {
 		args = append(args, []string{"-map", "0", "-map_metadata", "0", outpath}...)
@@ -115,9 +122,12 @@ func Resample(file lib.Audiofile, outpath string, targetSampleRate int, bitrate 
 		args = append(args, []string{"-map_metadata", "0", outpath}...)
 	}
 	ffmpeg := exec.Command("ffmpeg", args...)
-	fmt.Println(ffmpeg.String())
 	err := ffmpeg.Run()
-	return err
+	if err != nil {
+		return err
+	}
+
+	return lib.RenameTempFile(file, outpath)
 }
 
 /*
@@ -125,7 +135,7 @@ func Resample(file lib.Audiofile, outpath string, targetSampleRate int, bitrate 
  */
 
 // Extract the embedded cover.
-func ExtractCover(file lib.Audiofile) (bool, error) {
+func ExtractCover(file lib.Mediafile) (bool, error) {
 	if file.IsOpus {
 		opustags := exec.Command("opustags", "--output-cover", "cover.jpg", file.Path, "-i")
 		err := opustags.Run()
@@ -154,15 +164,14 @@ func ExtractCover(file lib.Audiofile) (bool, error) {
 }
 
 // Embed a given image as a cover.
-func SetCover(file lib.Audiofile, cover string) error {
+func SetCover(file lib.Mediafile, cover string) error {
 	if file.IsOpus {
 		opustags := exec.Command("opustags", "--set-cover", cover, file.Path, "-i")
 		err := opustags.Run()
 		return err
 	}
 
-	ext := filepath.Ext(file.Path)
-	tempfile := fmt.Sprintf("temp%s", ext)
+	tempfile := fmt.Sprintf("temp%s", filepath.Ext(file.Path))
 	args := []string{"-i", file.Path, "-i", cover, "-map", "0", "-map", "1", "-c", "copy", "-metadata:s:v", `title="Album cover"`, "-metadata:s:v", `comment="Cover (front)"`, tempfile}
 	ffmpeg := exec.Command("ffmpeg", args...)
 	err := ffmpeg.Run()

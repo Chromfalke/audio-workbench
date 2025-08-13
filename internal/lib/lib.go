@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-type Audiofile struct {
+type Mediafile struct {
 	Path   string
 	IsOpus bool
 }
@@ -24,21 +24,21 @@ func CreateOutputDir(outputDir string) error {
 	return nil
 }
 
-func CollectInputFiles(input string) ([]Audiofile, error) {
+func CollectInputFiles(input string) ([]Mediafile, error) {
 	inputInfo, err := os.Stat(input)
 	if err != nil {
-		return []Audiofile{}, err
+		return []Mediafile{}, err
 	}
 
-	var files []Audiofile
+	var files []Mediafile
 	if inputInfo.IsDir() {
 		entries, err := os.ReadDir(input)
 		if err != nil {
-			return []Audiofile{}, err
+			return []Mediafile{}, err
 		}
 		for _, entry := range entries {
 			if !entry.IsDir() {
-				file := Audiofile{
+				file := Mediafile{
 					Path:   filepath.Join(input, entry.Name()),
 					IsOpus: strings.HasSuffix(entry.Name(), ".opus") || strings.HasSuffix(entry.Name(), ".ogg"),
 				}
@@ -46,7 +46,7 @@ func CollectInputFiles(input string) ([]Audiofile, error) {
 			}
 		}
 	} else {
-		files = []Audiofile{Audiofile{
+		files = []Mediafile{Mediafile{
 			Path:   input,
 			IsOpus: strings.HasSuffix(input, ".opus") || strings.HasSuffix(input, ".ogg"),
 		}}
@@ -55,11 +55,21 @@ func CollectInputFiles(input string) ([]Audiofile, error) {
 	return files, nil
 }
 
-func BuildOutputPath(file Audiofile, outputDir string) string {
+func BuildOutputPath(file Mediafile, outputDir string) string {
 	if outputDir == "" {
 		ext := filepath.Ext(file.Path)
 		return fmt.Sprintf("temp%s", ext)
 	} else {
 		return filepath.Join(outputDir, filepath.Base(file.Path))
 	}
+}
+
+func RenameTempFile(file Mediafile, outpath string) error {
+	tempfile := fmt.Sprintf("temp%s", filepath.Ext(outpath))
+	if filepath.Base(outpath) == "temp"+filepath.Ext(outpath) {
+		err := os.Rename(tempfile, file.Path)
+		return fmt.Errorf("Failed to overwrite the original file for %s: %s\n", file.Path, err)
+	}
+
+	return nil
 }

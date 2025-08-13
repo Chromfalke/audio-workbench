@@ -10,7 +10,7 @@ import (
 )
 
 type Processor interface {
-	Run(file lib.Audiofile, outpath string) error
+	Run(file lib.Mediafile, outpath string) error
 }
 
 // Processor to normalize the loudness of an audio file
@@ -18,7 +18,7 @@ type Normalizer struct {
 	TargetLoudness float64
 }
 
-func (normalizer Normalizer) Run(file lib.Audiofile, outpath string) error {
+func (normalizer Normalizer) Run(file lib.Mediafile, outpath string) error {
 	sampleRate, err := commands.ExtractSampleRate(file.Path)
 	if err != nil {
 		return fmt.Errorf("Failed to extract the sample rate from %s: %s\n", file.Path, err)
@@ -45,7 +45,7 @@ type Converter struct {
 	Format string
 }
 
-func (converter Converter) Run(file lib.Audiofile, outpath string) error {
+func (converter Converter) Run(file lib.Mediafile, outpath string) error {
 	ext := filepath.Ext(outpath)
 	outpath = strings.TrimRight(outpath, ext) + "." + converter.Format
 
@@ -70,7 +70,7 @@ type Resampler struct {
 	SampleRate int
 }
 
-func (resampler Resampler) Run(file lib.Audiofile, outpath string) error {
+func (resampler Resampler) Run(file lib.Mediafile, outpath string) error {
 	bitrate, err := commands.ExtractBitrate(file)
 	if err != nil {
 		return fmt.Errorf("Failed to extract the bitrate from %s: %s", file.Path, err)
@@ -79,6 +79,20 @@ func (resampler Resampler) Run(file lib.Audiofile, outpath string) error {
 	if err != nil {
 		fmt.Println(err)
 		return fmt.Errorf("Failed to resample the %s: %s", file.Path, err)
+	}
+
+	return nil
+}
+
+// Processor to set the cover image
+type CoverImageSetter struct {
+	CoverImage string
+}
+
+func (setter CoverImageSetter) Run(file lib.Mediafile, outpath string) error {
+	err := commands.SetCover(file, setter.CoverImage)
+	if err != nil {
+		return fmt.Errorf("Failed to set %s as cover for %s: %s", setter.CoverImage, file.Path, err)
 	}
 
 	return nil

@@ -69,7 +69,7 @@ func main() {
 			log.Fatalln("Fatal: You need to provide an input directory or file.")
 		}
 
-		validFormats := []string{"flac", "mp3", "ogg", "opus", "wav"}
+		validFormats := []string{"flac", "mp3", "opus", "wav"}
 		if !slices.Contains(validFormats, *convertFormat) {
 			log.Println("Supported formats are: ", strings.Join(validFormats, ", "))
 			log.Fatalf("Fatal: Invalid format %s\n", *convertFormat)
@@ -95,7 +95,7 @@ func main() {
 		if strings.HasSuffix(resampleCmd.Arg(0), ".opus") || strings.HasSuffix(resampleCmd.Arg(0), ".ogg") {
 			if !slices.Contains(validOpusRates, *resampleRate) {
 				log.Println("Supported sample rates for opus are: ", strings.Join(validOpusStrings, ", "))
-				log.Fatalf("Fatal: Invalid sample rate %d\n", *resampleRate)
+				log.Fatalf("Fatal: Invalid sample rate for opus %d\n", *resampleRate)
 			}
 		}
 
@@ -108,24 +108,22 @@ func main() {
 		imgExtensions := []string{".jpeg", ".jpg", ".png"}
 		if !slices.Contains(imgExtensions, filepath.Ext(os.Args[2])) {
 			log.Println("Supported formats: ", strings.Join(imgExtensions, ", "))
-			log.Fatalln("Fatal: Provided cover is not a supported image format.")
+			log.Fatalf("Fatal: Provided cover format %s is not a supported image format.\n", filepath.Ext(os.Args[2]))
 		}
-		file := lib.Audiofile{
-			Path:   os.Args[3],
-			IsOpus: strings.HasSuffix(os.Args[3], ".opus") || strings.HasSuffix(os.Args[3], ".ogg"),
-		}
-		err := commands.SetCover(file, os.Args[2])
+		_, err := os.Stat(os.Args[2])
 		if err != nil {
-			log.Fatalf("Failed to set %s as cover for %s: %s\n", os.Args[2], os.Args[3], err)
+			log.Fatalf("Failed to access provided cover image %s: %s\n", os.Args[2], err)
 		}
+
+		runner(os.Args[3], "", processors.CoverImageSetter{CoverImage: os.Args[2]})
 	case "extract-cover":
 		if len(os.Args) < 3 {
 			fmt.Println("Usage: audio-workbench extract-cover <path>")
 			log.Fatalln("Fatal: You need to provide a file from which to extract a cover.")
 		}
-		file := lib.Audiofile{
+		file := lib.Mediafile{
 			Path:   os.Args[2],
-			IsOpus: strings.HasSuffix(os.Args[2], ".opus") || strings.HasSuffix(os.Args[2], ".ogg"),
+			IsOpus: strings.HasSuffix(os.Args[2], ".opus"),
 		}
 		hasCover, err := commands.ExtractCover(file)
 		if err != nil {
@@ -153,7 +151,7 @@ func runner(input string, outputDir string, processor processors.Processor) {
 	}
 
 	for _, file := range files {
-		fmt.Println("Processing ", file.Path)
+		log.Println("Processing ", file.Path)
 		var hasCover bool
 		if file.IsOpus {
 			hasCover, err = commands.ExtractCover(file)
@@ -165,16 +163,6 @@ func runner(input string, outputDir string, processor processors.Processor) {
 		outpath := lib.BuildOutputPath(file, outputDir)
 
 		processor.Run(file, outpath)
-
-		if outputDir == "" {
-			err := os.Rename(outpath, file.Path)
-			if err != nil {
-				log.Fatalf("Failed to overwrite the original file for %s: %s\n", file.Path, err)
-			}
-		} else {
-			// update the path to the new file for all remaining operations
-			file.Path = outpath
-		}
 
 		if file.IsOpus && hasCover {
 			err := commands.SetCover(file, "cover.jpg")
