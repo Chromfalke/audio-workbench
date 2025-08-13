@@ -1,4 +1,4 @@
-package main
+package lib
 
 import (
 	"fmt"
@@ -16,7 +16,7 @@ type Audiofile struct {
  * Various helper functions
  */
 
-func createOutputDir(outputDir string) error {
+func CreateOutputDir(outputDir string) error {
 	if outputDir != "" {
 		err := os.MkdirAll(outputDir, 0775)
 		return err
@@ -24,7 +24,7 @@ func createOutputDir(outputDir string) error {
 	return nil
 }
 
-func collectInputFiles(input string) ([]Audiofile, error) {
+func CollectInputFiles(input string) ([]Audiofile, error) {
 	inputInfo, err := os.Stat(input)
 	if err != nil {
 		return []Audiofile{}, err
@@ -55,7 +55,7 @@ func collectInputFiles(input string) ([]Audiofile, error) {
 	return files, nil
 }
 
-func buildOutputPath(file Audiofile, outputDir string) string {
+func BuildOutputPath(file Audiofile, outputDir string) string {
 	if outputDir == "" {
 		ext := filepath.Ext(file.Path)
 		return fmt.Sprintf("temp%s", ext)

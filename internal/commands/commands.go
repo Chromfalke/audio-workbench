@@ -1,4 +1,4 @@
-package main
+package commands
 
 import (
 	"encoding/json"
@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/Chromfalke/audio-workbench/internal/lib"
 )
 
 type LoudnessInfo struct {
@@ -22,7 +24,7 @@ type LoudnessInfo struct {
  */
 
 // Extract the sample rate of an audio file.
-func extractSampleRate(file string) (string, error) {
+func ExtractSampleRate(file string) (string, error) {
 	args := []string{"-v", "error", "-select_streams", "a:0", "-show_entries", "stream=sample_rate", "-of", "default=noprint_wrappers=1:nokey=1", file}
 	ffmpeg := exec.Command("ffprobe", args...)
 	output, err := ffmpeg.Output()
@@ -33,7 +35,7 @@ func extractSampleRate(file string) (string, error) {
 }
 
 // Extract the bitrate of an audio file.
-func extractBitrate(file Audiofile) (string, error) {
+func ExtractBitrate(file lib.Audiofile) (string, error) {
 	if file.IsOpus {
 		// return 128kbit/s as a good default for opus
 		return "128000", nil
@@ -49,7 +51,7 @@ func extractBitrate(file Audiofile) (string, error) {
 }
 
 // First pass with ffmpeg to analyze the loudness of an audio file.
-func extractLoudnessInfo(file string) (LoudnessInfo, error) {
+func ExtractLoudnessInfo(file string) (LoudnessInfo, error) {
 	ffmpegArgs := []string{"-i", file, "-af", "loudnorm=print_format=json", "-nostats", "-hide_banner", "-f", "null", "-"}
 	ffmpeg := exec.Command("ffmpeg", ffmpegArgs...)
 	output, err := ffmpeg.CombinedOutput()
@@ -69,7 +71,7 @@ func extractLoudnessInfo(file string) (LoudnessInfo, error) {
 }
 
 // Second pass with ffmpeg to normalize the loudness.
-func normalizeLoudness(file Audiofile, outpath string, targetLoudness float64, loudnessInfo LoudnessInfo, sampleRate string, bitrate string) error {
+func NormalizeLoudness(file lib.Audiofile, outpath string, targetLoudness float64, loudnessInfo LoudnessInfo, sampleRate string, bitrate string) error {
 	loudnorm := fmt.Sprintf("loudnorm=linear=true:I=%.2f:LRA=7.0:TP=-2.0:offset=%s:measured_I=%s:measured_TP=%s:measured_LRA=%s:measured_thresh=%s", targetLoudness, loudnessInfo.Offset, loudnessInfo.I, loudnessInfo.TP, loudnessInfo.LRA, loudnessInfo.Thresh)
 	args := []string{"-i", file.Path, "-af", loudnorm, "-ar", sampleRate, "-b:a", bitrate}
 	if !file.IsOpus {
@@ -87,7 +89,7 @@ func normalizeLoudness(file Audiofile, outpath string, targetLoudness float64, l
  */
 
 // Reformat the audio file
-func convert(file Audiofile, outpath string, sampleRate string, bitrate string) error {
+func Convert(file lib.Audiofile, outpath string, sampleRate string, bitrate string) error {
 	args := []string{"-i", file.Path, "-ar", sampleRate, "-b:a", bitrate}
 	if !file.IsOpus {
 		args = append(args, []string{"-map", "0", "-map_metadata", "0", outpath}...)
@@ -105,7 +107,7 @@ func convert(file Audiofile, outpath string, sampleRate string, bitrate string) 
  */
 
 // Resample an audio file
-func resample(file Audiofile, outpath string, targetSampleRate int, bitrate string) error {
+func Resample(file lib.Audiofile, outpath string, targetSampleRate int, bitrate string) error {
 	args := []string{"-i", file.Path, "-ar", fmt.Sprintf("%d", targetSampleRate), "-b:a", bitrate}
 	if !file.IsOpus {
 		args = append(args, []string{"-map", "0", "-map_metadata", "0", outpath}...)
@@ -123,7 +125,7 @@ func resample(file Audiofile, outpath string, targetSampleRate int, bitrate stri
  */
 
 // Extract the embedded cover.
-func extractCover(file Audiofile) (bool, error) {
+func ExtractCover(file lib.Audiofile) (bool, error) {
 	if file.IsOpus {
 		opustags := exec.Command("opustags", "--output-cover", "cover.jpg", file.Path, "-i")
 		err := opustags.Run()
@@ -152,7 +154,7 @@ func extractCover(file Audiofile) (bool, error) {
 }
 
 // Embed a given image as a cover.
-func setCover(file Audiofile, cover string) error {
+func SetCover(file lib.Audiofile, cover string) error {
 	if file.IsOpus {
 		opustags := exec.Command("opustags", "--set-cover", cover, file.Path, "-i")
 		err := opustags.Run()

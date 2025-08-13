@@ -9,11 +9,11 @@ import (
 	"slices"
 	"strings"
 	"text/tabwriter"
-)
 
-type Process interface {
-	Run(file Audiofile, outpath string) error
-}
+	"github.com/Chromfalke/audio-workbench/internal/commands"
+	"github.com/Chromfalke/audio-workbench/internal/lib"
+	"github.com/Chromfalke/audio-workbench/internal/processors"
+)
 
 func main() {
 	normalizeCmd := flag.NewFlagSet("normalize", flag.ExitOnError)
@@ -57,7 +57,7 @@ func main() {
 			log.Fatalln("Fatal: You need to provide an input directory or file.")
 		}
 
-		runner(normalizeCmd.Arg(0), *normalizeOutput, Normalizer{TargetLoudness: *normalizeTargetLoudness})
+		runner(normalizeCmd.Arg(0), *normalizeOutput, processors.Normalizer{TargetLoudness: *normalizeTargetLoudness})
 	case "convert":
 		err := convertCmd.Parse(os.Args[2:])
 		if err != nil {
@@ -75,7 +75,7 @@ func main() {
 			log.Fatalf("Fatal: Invalid format %s\n", *convertFormat)
 		}
 
-		runner(convertCmd.Arg(0), *convertOutput, Converter{Format: *convertFormat})
+		runner(convertCmd.Arg(0), *convertOutput, processors.Converter{Format: *convertFormat})
 	case "resample":
 		err := resampleCmd.Parse(os.Args[2:])
 		if err != nil {
@@ -99,7 +99,7 @@ func main() {
 			}
 		}
 
-		runner(resampleCmd.Arg(0), *resampleOutput, Resampler{SampleRate: *resampleRate})
+		runner(resampleCmd.Arg(0), *resampleOutput, processors.Resampler{SampleRate: *resampleRate})
 	case "set-cover":
 		if len(os.Args) < 4 {
 			log.Println("Usage: audio-workbench set-cover <cover> <path>")
@@ -110,11 +110,11 @@ func main() {
 			log.Println("Supported formats: ", strings.Join(imgExtensions, ", "))
 			log.Fatalln("Fatal: Provided cover is not a supported image format.")
 		}
-		file := Audiofile{
+		file := lib.Audiofile{
 			Path:   os.Args[3],
 			IsOpus: strings.HasSuffix(os.Args[3], ".opus") || strings.HasSuffix(os.Args[3], ".ogg"),
 		}
-		err := setCover(file, os.Args[2])
+		err := commands.SetCover(file, os.Args[2])
 		if err != nil {
 			log.Fatalf("Failed to set %s as cover for %s: %s\n", os.Args[2], os.Args[3], err)
 		}
@@ -123,11 +123,11 @@ func main() {
 			fmt.Println("Usage: audio-workbench extract-cover <path>")
 			log.Fatalln("Fatal: You need to provide a file from which to extract a cover.")
 		}
-		file := Audiofile{
+		file := lib.Audiofile{
 			Path:   os.Args[2],
 			IsOpus: strings.HasSuffix(os.Args[2], ".opus") || strings.HasSuffix(os.Args[2], ".ogg"),
 		}
-		hasCover, err := extractCover(file)
+		hasCover, err := commands.ExtractCover(file)
 		if err != nil {
 			log.Fatalf("Failed to extract the cover from %s: %s", os.Args[2], err)
 		}
@@ -141,13 +141,13 @@ func main() {
 	}
 }
 
-func runner(input string, outputDir string, process Process) {
-	err := createOutputDir(outputDir)
+func runner(input string, outputDir string, processor processors.Processor) {
+	err := lib.CreateOutputDir(outputDir)
 	if err != nil {
 		log.Fatalln("Failed to create output directory: ", err)
 	}
 
-	files, err := collectInputFiles(input)
+	files, err := lib.CollectInputFiles(input)
 	if err != nil {
 		log.Fatalln("Failed to collect input files: ", err)
 	}
@@ -156,15 +156,15 @@ func runner(input string, outputDir string, process Process) {
 		fmt.Println("Processing ", file.Path)
 		var hasCover bool
 		if file.IsOpus {
-			hasCover, err = extractCover(file)
+			hasCover, err = commands.ExtractCover(file)
 			if err != nil {
 				log.Fatalf("Failed to extract the cover from %s: %s\n", file.Path, err)
 			}
 		}
 
-		outpath := buildOutputPath(file, outputDir)
+		outpath := lib.BuildOutputPath(file, outputDir)
 
-		process.Run(file, outpath)
+		processor.Run(file, outpath)
 
 		if outputDir == "" {
 			err := os.Rename(outpath, file.Path)
@@ -177,7 +177,7 @@ func runner(input string, outputDir string, process Process) {
 		}
 
 		if file.IsOpus && hasCover {
-			err := setCover(file, "cover.jpg")
+			err := commands.SetCover(file, "cover.jpg")
 			if err != nil {
 				log.Fatalf("Failed to set cover for %s: %s\n", file.Path, err)
 			}
@@ -187,75 +187,4 @@ func runner(input string, outputDir string, process Process) {
 			}
 		}
 	}
-}
-
-// Process to normalize the loudness of an audio file
-type Normalizer struct {
-	TargetLoudness float64
-}
-
-func (normalizer Normalizer) Run(file Audiofile, outpath string) error {
-	sampleRate, err := extractSampleRate(file.Path)
-	if err != nil {
-		return fmt.Errorf("Failed to extract the sample rate from %s: %s\n", file.Path, err)
-	}
-	bitrate, err := extractBitrate(file)
-	if err != nil {
-		return fmt.Errorf("Failed to extract the bitrate from %s: %s", file.Path, err)
-	}
-	loudnessInfo, err := extractLoudnessInfo(file.Path)
-	if err != nil {
-		return fmt.Errorf("Failed to extract the loudness from %s: %s", file.Path, err)
-	}
-
-	err = normalizeLoudness(file, outpath, normalizer.TargetLoudness, loudnessInfo, sampleRate, bitrate)
-	if err != nil {
-		return fmt.Errorf("Failed to normalize the loudness of %s: %s\n", file.Path, err)
-	}
-
-	return nil
-}
-
-// Process to convert the audio file to a different format
-type Converter struct {
-	Format string
-}
-
-func (converter Converter) Run(file Audiofile, outpath string) error {
-	ext := filepath.Ext(outpath)
-	outpath = strings.TrimRight(outpath, ext) + "." + converter.Format
-
-	sampleRate, err := extractSampleRate(file.Path)
-	if err != nil {
-		return fmt.Errorf("Failed to extract the sample rate from %s: %s\n", file.Path, err)
-	}
-	bitrate, err := extractBitrate(file)
-	if err != nil {
-		return fmt.Errorf("Failed to extract the bitrate from %s: %s", file.Path, err)
-	}
-	err = convert(file, outpath, sampleRate, bitrate)
-	if err != nil {
-		return fmt.Errorf("Failed to convert %s to %s: %s", file.Path, converter.Format, err)
-	}
-
-	return nil
-}
-
-// Process to resample an audio file
-type Resampler struct {
-	SampleRate int
-}
-
-func (resampler Resampler) Run(file Audiofile, outpath string) error {
-	bitrate, err := extractBitrate(file)
-	if err != nil {
-		return fmt.Errorf("Failed to extract the bitrate from %s: %s", file.Path, err)
-	}
-	err = resample(file, outpath, resampler.SampleRate, bitrate)
-	if err != nil {
-		fmt.Println(err)
-		return fmt.Errorf("Failed to resample the %s: %s", file.Path, err)
-	}
-
-	return nil
 }
