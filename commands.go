@@ -161,7 +161,7 @@ func setCover(file Audiofile, cover string) error {
 
 	ext := filepath.Ext(file.Path)
 	tempfile := fmt.Sprintf("temp%s", ext)
-	args := []string{"-i", file.Path, "-i", cover, "-map", "0", "-map 1", "-c", "copy", "-metadata:s:v", "title=\"Album cover\"", "-metadata:s:v", "comment=\"Cover (front)\"", tempfile}
+	args := []string{"-i", file.Path, "-i", cover, "-map", "0", "-map", "1", "-c", "copy", "-metadata:s:v", `title="Album cover"`, "-metadata:s:v", `comment="Cover (front)"`, tempfile}
 	ffmpeg := exec.Command("ffmpeg", args...)
 	err := ffmpeg.Run()
 	if err != nil {
