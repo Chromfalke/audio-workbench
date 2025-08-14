@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"text/tabwriter"
@@ -36,8 +37,9 @@ func main() {
 	audioExtractCmd.SetOutput(os.Stderr)
 	audioFormat := audioExtractCmd.StringP("format", "f", "mp3", "Output format")
 	audioExtractCopyCover := audioExtractCmd.BoolP("copy-cover", "c", false, "Copy the cover from the video")
+	audioExtractCoverTimestamp := audioExtractCmd.StringP("cover-timestamp", "t", "00:00:10", "The timestamp in the video to extract the cover from")
 
-	if len(os.Args) < 2 {
+	if len(os.Args) < 2 || os.Args[1] == "help" {
 		writer := tabwriter.NewWriter(os.Stderr, 15, 2, 1, ' ', 0)
 		fmt.Fprintln(writer, "Usage: audio-workbench <command> [<args>]")
 		fmt.Fprintln(writer, "Commands:")
@@ -163,7 +165,17 @@ func main() {
 			log.Fatalf("Fatal: Invalid format %s\n", *audioFormat)
 		}
 
-		runner(audioExtractCmd.Arg(0), audioExtractCmd.Arg(1), processors.AudioExtractor{AudioFormat: "." + *audioFormat, CopyCover: *audioExtractCopyCover})
+		if *audioExtractCopyCover {
+			matches, err := regexp.MatchString("([0-5][0-9]|60):([0-5][0-9]|60):([0-5][0-9]|60)", *audioExtractCoverTimestamp)
+			if err != nil {
+				log.Fatalln("Failed to check timestamp: ", err)
+			}
+			if !matches {
+				log.Fatalf("Fatal: The provided timestamp %s does not follow the schema HH:MM:SS.\n", *audioExtractCoverTimestamp)
+			}
+		}
+
+		runner(audioExtractCmd.Arg(0), audioExtractCmd.Arg(1), processors.AudioExtractor{AudioFormat: "." + *audioFormat, CopyCover: *audioExtractCopyCover, VideoTimestamp: *audioExtractCoverTimestamp})
 	default:
 		log.Fatalln("Unknown command:", os.Args[1])
 	}

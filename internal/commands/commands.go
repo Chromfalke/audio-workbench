@@ -135,7 +135,7 @@ func Resample(file lib.Mediafile, outpath string, targetSampleRate int, bitrate 
  */
 
 // Extract the embedded cover.
-func ExtractCover(file lib.Mediafile, imagePath string) (bool, error) {
+func ExtractCover(file lib.Mediafile, imagePath string, videoTimestamp string) (bool, error) {
 	if file.IsOpus {
 		opustags := exec.Command("opustags", "--output-cover", imagePath, file.Path, "-i")
 		err := opustags.Run()
@@ -144,7 +144,7 @@ func ExtractCover(file lib.Mediafile, imagePath string) (bool, error) {
 		}
 	} else if file.IsVideo {
 		// skip the first 10 seconds to avoid any intos or logos as best-effort
-		args := []string{"-ss", "10", "-i", file.Path, "-vframes:v", "1", "-update", "true", "-an", imagePath}
+		args := []string{"-ss", videoTimestamp, "-i", file.Path, "-vframes:v", "1", "-update", "true", "-an", imagePath}
 		ffmpeg := exec.Command("ffmpeg", args...)
 		err := ffmpeg.Run()
 		if err != nil {

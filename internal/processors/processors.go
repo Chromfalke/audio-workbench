@@ -23,7 +23,7 @@ func (normalizer Normalizer) Run(file lib.Mediafile, outpath string) error {
 	var hasCover bool
 	var err error
 	if file.IsOpus {
-		hasCover, err = commands.ExtractCover(file, "cover.jpg")
+		hasCover, err = commands.ExtractCover(file, "cover.jpg", "")
 		if err != nil {
 			return fmt.Errorf("Failed to extract the cover from %s: %s\n", file.Path, err)
 		}
@@ -70,7 +70,7 @@ func (converter Converter) Run(file lib.Mediafile, outpath string) error {
 	var hasCover bool
 	var err error
 	if file.IsOpus {
-		hasCover, err = commands.ExtractCover(file, "cover.jpg")
+		hasCover, err = commands.ExtractCover(file, "cover.jpg", "")
 		if err != nil {
 			return fmt.Errorf("Failed to extract the cover from %s: %s\n", file.Path, err)
 		}
@@ -115,7 +115,7 @@ func (resampler Resampler) Run(file lib.Mediafile, outpath string) error {
 	var hasCover bool
 	var err error
 	if file.IsOpus {
-		hasCover, err = commands.ExtractCover(file, "cover.jpg")
+		hasCover, err = commands.ExtractCover(file, "cover.jpg", "")
 		if err != nil {
 			return fmt.Errorf("Failed to extract the cover from %s: %s\n", file.Path, err)
 		}
@@ -163,7 +163,7 @@ func (extractor CoverImageExtractor) Run(file lib.Mediafile, outpath string) err
 		imagePath = strings.ReplaceAll(outpath, filepath.Ext(outpath), extractor.ImageFormat)
 	}
 
-	hasCover, err := commands.ExtractCover(file, imagePath)
+	hasCover, err := commands.ExtractCover(file, imagePath, "")
 	if err != nil {
 		return fmt.Errorf("Failed to extract the cover from %s: %s", file.Path, err)
 	}
@@ -197,8 +197,9 @@ func (setter CoverImageSetter) Run(file lib.Mediafile, outpath string) error {
 
 // Processor to extract the audio from a video
 type AudioExtractor struct {
-	AudioFormat string
-	CopyCover   bool
+	AudioFormat    string
+	CopyCover      bool
+	VideoTimestamp string
 }
 
 func (extractor AudioExtractor) Run(file lib.Mediafile, outpath string) error {
@@ -219,7 +220,7 @@ func (extractor AudioExtractor) Run(file lib.Mediafile, outpath string) error {
 	}
 
 	if extractor.CopyCover {
-		hasCover, err := commands.ExtractCover(file, "cover.jpg")
+		hasCover, err := commands.ExtractCover(file, "cover.jpg", extractor.VideoTimestamp)
 		if err != nil {
 			return fmt.Errorf("Failed to extract the cover from %s: %s", file.Path, err)
 		}
