@@ -111,7 +111,7 @@ func main() {
 		}
 		imgExtensions := []string{".jpeg", ".jpg", ".png"}
 		if !slices.Contains(imgExtensions, filepath.Ext(os.Args[2])) {
-			log.Println("Supported formats: ", strings.Join(imgExtensions, ", "))
+			log.Println("Supported image types: ", strings.Join(imgExtensions, ", "))
 			log.Fatalf("Fatal: Provided cover format %s is not a supported image format.\n", filepath.Ext(os.Args[2]))
 		}
 
@@ -127,7 +127,7 @@ func main() {
 			log.Fatalln("Fatal: You need to provide an input directory or file.")
 		}
 
-		imgExtensions := []string{".jpeg", ".jpg", ".png"}
+		imgExtensions := []string{"jpeg", "jpg", "png"}
 		var usedFormat string
 		if filepath.Ext(*imgExtractOutput) != "" {
 			usedFormat = filepath.Ext(*imgExtractOutput)
@@ -139,7 +139,7 @@ func main() {
 			log.Fatalf("Fatal: Extracting a cover with format %s is not a supported.\n", usedFormat)
 		}
 
-		runner(imgExtractCmd.Arg(0), *imgExtractOutput, processors.CoverImageExtractor{ImageFormat: usedFormat})
+		runner(imgExtractCmd.Arg(0), *imgExtractOutput, processors.CoverImageExtractor{ImageFormat: "." + usedFormat})
 	default:
 		log.Fatalln("Unknown command:", os.Args[1])
 	}

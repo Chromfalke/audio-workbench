@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
 type Mediafile struct {
-	Path   string
-	IsOpus bool
+	Path    string
+	IsOpus  bool
+	IsVideo bool
 }
 
 /*
@@ -30,6 +32,7 @@ func CollectInputFiles(input string) ([]Mediafile, error) {
 		return []Mediafile{}, err
 	}
 
+	videoExtensions := []string{".mp4", ".mkv", ".mov"}
 	var files []Mediafile
 	if inputInfo.IsDir() {
 		entries, err := os.ReadDir(input)
@@ -39,16 +42,18 @@ func CollectInputFiles(input string) ([]Mediafile, error) {
 		for _, entry := range entries {
 			if !entry.IsDir() {
 				file := Mediafile{
-					Path:   filepath.Join(input, entry.Name()),
-					IsOpus: strings.HasSuffix(entry.Name(), ".opus") || strings.HasSuffix(entry.Name(), ".ogg"),
+					Path:    filepath.Join(input, entry.Name()),
+					IsOpus:  strings.HasSuffix(entry.Name(), ".opus"),
+					IsVideo: slices.Contains(videoExtensions, filepath.Ext(entry.Name())),
 				}
 				files = append(files, file)
 			}
 		}
 	} else {
 		files = []Mediafile{Mediafile{
-			Path:   input,
-			IsOpus: strings.HasSuffix(input, ".opus") || strings.HasSuffix(input, ".ogg"),
+			Path:    input,
+			IsOpus:  strings.HasSuffix(input, ".opus"),
+			IsVideo: slices.Contains(videoExtensions, filepath.Ext(input)),
 		}}
 	}
 

@@ -142,6 +142,15 @@ func ExtractCover(file lib.Mediafile, imagePath string) (bool, error) {
 		if err != nil {
 			return false, err
 		}
+	} else if file.IsVideo {
+		// skip the first 10 seconds to avoid any intos or logos as best-effort
+		args := []string{"-ss", "10", "-i", file.Path, "-vframes:v", "1", "-update", "true", "-an", imagePath}
+		ffmpeg := exec.Command("ffmpeg", args...)
+		fmt.Println(ffmpeg.String())
+		err := ffmpeg.Run()
+		if err != nil {
+			return false, err
+		}
 	} else {
 		ffmpeg := exec.Command("ffmpeg", "-i", file.Path, "-an", "-c:v", "copy", imagePath)
 		err := ffmpeg.Run()
