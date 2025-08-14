@@ -135,24 +135,24 @@ func Resample(file lib.Mediafile, outpath string, targetSampleRate int, bitrate 
  */
 
 // Extract the embedded cover.
-func ExtractCover(file lib.Mediafile) (bool, error) {
+func ExtractCover(file lib.Mediafile, imagePath string) (bool, error) {
 	if file.IsOpus {
-		opustags := exec.Command("opustags", "--output-cover", "cover.jpg", file.Path, "-i")
+		opustags := exec.Command("opustags", "--output-cover", imagePath, file.Path, "-i")
 		err := opustags.Run()
 		if err != nil {
 			return false, err
 		}
 	} else {
-		ffmpeg := exec.Command("ffmpeg", "-i", file.Path, "-an", "-c:v", "copy", "cover.jpg")
+		ffmpeg := exec.Command("ffmpeg", "-i", file.Path, "-an", "-c:v", "copy", imagePath)
 		err := ffmpeg.Run()
 		if err != nil {
 			return false, err
 		}
 	}
 
-	_, err := os.Stat("cover.jpg")
+	_, err := os.Stat(imagePath)
 	if err != nil {
-		// assume that if no cover was extracted and no error was thrown that no embedded cover exists
+		// assume that if no cover was extracted and no error was thrown no embedded cover exists
 		if os.IsNotExist(err) {
 			return false, nil
 		} else {
@@ -163,7 +163,7 @@ func ExtractCover(file lib.Mediafile) (bool, error) {
 	return true, nil
 }
 
-// Embed a given image as a cover.
+// Embed a given image as a cover. This is always done inplace.
 func SetCover(file lib.Mediafile, cover string) error {
 	if file.IsOpus {
 		opustags := exec.Command("opustags", "--set-cover", cover, file.Path, "-i")
@@ -172,7 +172,11 @@ func SetCover(file lib.Mediafile, cover string) error {
 	}
 
 	tempfile := fmt.Sprintf("temp%s", filepath.Ext(file.Path))
-	args := []string{"-i", file.Path, "-i", cover, "-map", "0", "-map", "1", "-c", "copy", "-metadata:s:v", `title="Album cover"`, "-metadata:s:v", `comment="Cover (front)"`, tempfile}
+	args := []string{"-i", file.Path, "-i", cover, "-map", "0", "-map", "1", "-c", "copy", "-metadata:s:v", `title="Album cover"`, "-metadata:s:v", `comment="Cover (front)"`}
+	if filepath.Ext(file.Path) == ".flac" {
+		args = append(args, "-disposition:v", "attached_pic")
+	}
+	args = append(args, tempfile)
 	ffmpeg := exec.Command("ffmpeg", args...)
 	err := ffmpeg.Run()
 	if err != nil {

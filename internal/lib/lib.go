@@ -18,7 +18,7 @@ type Mediafile struct {
 
 func CreateOutputDir(outputDir string) error {
 	if outputDir != "" {
-		err := os.MkdirAll(outputDir, 0775)
+		err := os.MkdirAll(filepath.Dir(outputDir), 0775)
 		return err
 	}
 	return nil
@@ -59,9 +59,11 @@ func BuildOutputPath(file Mediafile, outputDir string) string {
 	if outputDir == "" {
 		ext := filepath.Ext(file.Path)
 		return fmt.Sprintf("temp%s", ext)
-	} else {
+	} else if filepath.Ext(outputDir) == "" {
 		return filepath.Join(outputDir, filepath.Base(file.Path))
 	}
+
+	return outputDir
 }
 
 func RenameTempFile(file Mediafile, outpath string) error {

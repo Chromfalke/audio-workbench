@@ -10,7 +10,6 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/Chromfalke/audio-workbench/internal/commands"
 	"github.com/Chromfalke/audio-workbench/internal/lib"
 	"github.com/Chromfalke/audio-workbench/internal/processors"
 )
@@ -30,6 +29,11 @@ func main() {
 	resampleCmd.SetOutput(os.Stderr)
 	resampleRate := resampleCmd.Int("samplerate", 48000, "Target sample rate")
 	resampleOutput := resampleCmd.String("output", "", "Output file or directory")
+
+	imgExtractCmd := flag.NewFlagSet("extract-cover", flag.ExitOnError)
+	imgExtractCmd.SetOutput(os.Stderr)
+	imgExtractFormat := imgExtractCmd.String("format", "jpg", "Output format")
+	imgExtractOutput := imgExtractCmd.String("output", "", "Output directory")
 
 	if len(os.Args) < 2 {
 		writer := tabwriter.NewWriter(os.Stderr, 15, 2, 1, ' ', 0)
@@ -110,30 +114,32 @@ func main() {
 			log.Println("Supported formats: ", strings.Join(imgExtensions, ", "))
 			log.Fatalf("Fatal: Provided cover format %s is not a supported image format.\n", filepath.Ext(os.Args[2]))
 		}
-		_, err := os.Stat(os.Args[2])
-		if err != nil {
-			log.Fatalf("Failed to access provided cover image %s: %s\n", os.Args[2], err)
-		}
 
 		runner(os.Args[3], "", processors.CoverImageSetter{CoverImage: os.Args[2]})
 	case "extract-cover":
-		if len(os.Args) < 3 {
-			fmt.Println("Usage: audio-workbench extract-cover <path>")
-			log.Fatalln("Fatal: You need to provide a file from which to extract a cover.")
-		}
-		file := lib.Mediafile{
-			Path:   os.Args[2],
-			IsOpus: strings.HasSuffix(os.Args[2], ".opus"),
-		}
-		hasCover, err := commands.ExtractCover(file)
+		err := imgExtractCmd.Parse(os.Args[2:])
 		if err != nil {
-			log.Fatalf("Failed to extract the cover from %s: %s", os.Args[2], err)
+			log.Fatalln("Failed to parse flags: ", err)
 		}
-		if hasCover {
-			fmt.Println("Extracted the cover to cover.jpg.")
+		if imgExtractCmd.Arg(0) == "" {
+			log.Println("Usage: audio-workbench extract-cover [<args>] <path>")
+			imgExtractCmd.PrintDefaults()
+			log.Fatalln("Fatal: You need to provide an input directory or file.")
+		}
+
+		imgExtensions := []string{".jpeg", ".jpg", ".png"}
+		var usedFormat string
+		if filepath.Ext(*imgExtractOutput) != "" {
+			usedFormat = filepath.Ext(*imgExtractOutput)
 		} else {
-			fmt.Println("No cover could be extracted from ", os.Args[2])
+			usedFormat = *imgExtractFormat
 		}
+		if !slices.Contains(imgExtensions, usedFormat) {
+			log.Println("Supported formats: ", strings.Join(imgExtensions, ", "))
+			log.Fatalf("Fatal: Extracting a cover with format %s is not a supported.\n", usedFormat)
+		}
+
+		runner(imgExtractCmd.Arg(0), *imgExtractOutput, processors.CoverImageExtractor{ImageFormat: usedFormat})
 	default:
 		log.Fatalln("Unknown command:", os.Args[1])
 	}
@@ -152,27 +158,7 @@ func runner(input string, outputDir string, processor processors.Processor) {
 
 	for _, file := range files {
 		log.Println("Processing ", file.Path)
-		var hasCover bool
-		if file.IsOpus {
-			hasCover, err = commands.ExtractCover(file)
-			if err != nil {
-				log.Fatalf("Failed to extract the cover from %s: %s\n", file.Path, err)
-			}
-		}
-
 		outpath := lib.BuildOutputPath(file, outputDir)
-
 		processor.Run(file, outpath)
-
-		if file.IsOpus && hasCover {
-			err := commands.SetCover(file, "cover.jpg")
-			if err != nil {
-				log.Fatalf("Failed to set cover for %s: %s\n", file.Path, err)
-			}
-			err = os.Remove("cover.jpg")
-			if err != nil {
-				log.Fatalln("Unable to remove temporary cover.jpg file: ", err)
-			}
-		}
 	}
 }
