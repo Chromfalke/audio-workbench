@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -10,36 +9,33 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/spf13/pflag"
+
 	"github.com/Chromfalke/audio-workbench/internal/lib"
 	"github.com/Chromfalke/audio-workbench/internal/processors"
 )
 
 func main() {
-	normalizeCmd := flag.NewFlagSet("normalize", flag.ExitOnError)
+	normalizeCmd := pflag.NewFlagSet("normalize", pflag.ExitOnError)
 	normalizeCmd.SetOutput(os.Stderr)
-	normalizeTargetLoudness := normalizeCmd.Float64("lufs", -18.0, "Target loudness in LUFS")
-	normalizeOutput := normalizeCmd.String("output", "", "Output file or directory")
+	targetLoudness := normalizeCmd.Float64P("lufs", "l", -18.0, "Target loudness in LUFS")
 
-	convertCmd := flag.NewFlagSet("convert", flag.ExitOnError)
+	convertCmd := pflag.NewFlagSet("convert", pflag.ExitOnError)
 	convertCmd.SetOutput(os.Stderr)
-	convertFormat := convertCmd.String("format", "mp3", "Output format")
-	convertOutput := convertCmd.String("output", "", "Output file or directory")
+	conversionFormat := convertCmd.StringP("format", "f", "mp3", "Output format")
 
-	resampleCmd := flag.NewFlagSet("resample", flag.ExitOnError)
+	resampleCmd := pflag.NewFlagSet("resample", pflag.ExitOnError)
 	resampleCmd.SetOutput(os.Stderr)
-	resampleRate := resampleCmd.Int("samplerate", 48000, "Target sample rate")
-	resampleOutput := resampleCmd.String("output", "", "Output file or directory")
+	resampleRate := resampleCmd.IntP("samplerate", "r", 48000, "Target sample rate")
 
-	imgExtractCmd := flag.NewFlagSet("extract-cover", flag.ExitOnError)
+	imgExtractCmd := pflag.NewFlagSet("extract-cover", pflag.ExitOnError)
 	imgExtractCmd.SetOutput(os.Stderr)
-	imgExtractFormat := imgExtractCmd.String("format", "jpg", "Output format")
-	imgExtractOutput := imgExtractCmd.String("output", "", "Output directory")
+	imgFormat := imgExtractCmd.StringP("format", "f", "jpg", "Output format")
 
-	audioExtractCmd := flag.NewFlagSet("extract-audio", flag.ExitOnError)
+	audioExtractCmd := pflag.NewFlagSet("extract-audio", pflag.ExitOnError)
 	audioExtractCmd.SetOutput(os.Stderr)
-	audioExtractFormat := audioExtractCmd.String("format", "mp3", "Output format")
-	audioExtractOutput := audioExtractCmd.String("output", "", "Output directory")
-	audioExtractCopyCover := audioExtractCmd.Bool("copy-cover", false, "Copy the cover from the video")
+	audioFormat := audioExtractCmd.StringP("format", "f", "mp3", "Output format")
+	audioExtractCopyCover := audioExtractCmd.BoolP("copy-cover", "c", false, "Copy the cover from the video")
 
 	if len(os.Args) < 2 {
 		writer := tabwriter.NewWriter(os.Stderr, 15, 2, 1, ' ', 0)
@@ -63,30 +59,30 @@ func main() {
 			log.Fatalln("Failed to parse flags: ", err)
 		}
 		if normalizeCmd.Arg(0) == "" {
-			log.Println("Usage: audio-workbench normalize [<args>] <path>")
+			log.Println("Usage: audio-workbench normalize [<args>] <path> [<outpath>]")
 			normalizeCmd.PrintDefaults()
 			log.Fatalln("Fatal: You need to provide an input directory or file.")
 		}
 
-		runner(normalizeCmd.Arg(0), *normalizeOutput, processors.Normalizer{TargetLoudness: *normalizeTargetLoudness})
+		runner(normalizeCmd.Arg(0), normalizeCmd.Arg(1), processors.Normalizer{TargetLoudness: *targetLoudness})
 	case "convert":
 		err := convertCmd.Parse(os.Args[2:])
 		if err != nil {
 			log.Fatalln("Failed to parse flags: ", err)
 		}
 		if convertCmd.Arg(0) == "" {
-			log.Println("Usage: audio-workbench convert [<args>] <path>")
+			log.Println("Usage: audio-workbench convert [<args>] <path> [<outpath>]")
 			convertCmd.PrintDefaults()
 			log.Fatalln("Fatal: You need to provide an input directory or file.")
 		}
 
 		validFormats := []string{"flac", "mp3", "opus", "wav"}
-		if !slices.Contains(validFormats, *convertFormat) {
+		if !slices.Contains(validFormats, *conversionFormat) {
 			log.Println("Supported formats are: ", strings.Join(validFormats, ", "))
-			log.Fatalf("Fatal: Invalid format %s\n", *convertFormat)
+			log.Fatalf("Fatal: Invalid format %s\n", *conversionFormat)
 		}
 
-		runner(convertCmd.Arg(0), *convertOutput, processors.Converter{Format: *convertFormat})
+		runner(convertCmd.Arg(0), convertCmd.Arg(1), processors.Converter{Format: *conversionFormat})
 	case "resample":
 		err := resampleCmd.Parse(os.Args[2:])
 		if err != nil {
@@ -110,7 +106,7 @@ func main() {
 			}
 		}
 
-		runner(resampleCmd.Arg(0), *resampleOutput, processors.Resampler{SampleRate: *resampleRate})
+		runner(resampleCmd.Arg(0), resampleCmd.Arg(1), processors.Resampler{SampleRate: *resampleRate})
 	case "set-cover":
 		if len(os.Args) < 4 {
 			log.Println("Usage: audio-workbench set-cover <cover> <path>")
@@ -129,24 +125,27 @@ func main() {
 			log.Fatalln("Failed to parse flags: ", err)
 		}
 		if imgExtractCmd.Arg(0) == "" {
-			log.Println("Usage: audio-workbench extract-cover [<args>] <path>")
+			log.Println("Usage: audio-workbench extract-cover [<args>] <path> <outpath>")
 			imgExtractCmd.PrintDefaults()
 			log.Fatalln("Fatal: You need to provide an input directory or file.")
 		}
 
 		imgExtensions := []string{"jpeg", "jpg", "png"}
 		var usedFormat string
-		if filepath.Ext(*imgExtractOutput) != "" {
-			usedFormat = filepath.Ext(*imgExtractOutput)
+		if filepath.Ext(imgExtractCmd.Arg(1)) != "" {
+			usedFormat = filepath.Ext(imgExtractCmd.Arg(1))
+			usedFormat = strings.ReplaceAll(usedFormat, ".", "")
 		} else {
-			usedFormat = *imgExtractFormat
+			usedFormat = *imgFormat
 		}
 		if !slices.Contains(imgExtensions, usedFormat) {
+			log.Println(usedFormat)
+			log.Println(*imgFormat)
 			log.Println("Supported formats: ", strings.Join(imgExtensions, ", "))
 			log.Fatalf("Fatal: Extracting a cover with format %s is not a supported.\n", usedFormat)
 		}
 
-		runner(imgExtractCmd.Arg(0), *imgExtractOutput, processors.CoverImageExtractor{ImageFormat: "." + usedFormat})
+		runner(imgExtractCmd.Arg(0), imgExtractCmd.Arg(1), processors.CoverImageExtractor{ImageFormat: "." + usedFormat})
 	case "extract-audio":
 		err := audioExtractCmd.Parse(os.Args[2:])
 		if err != nil {
@@ -159,12 +158,12 @@ func main() {
 		}
 
 		validFormats := []string{"flac", "mp3", "opus", "wav"}
-		if !slices.Contains(validFormats, *audioExtractFormat) {
+		if !slices.Contains(validFormats, *audioFormat) {
 			log.Println("Supported formats are: ", strings.Join(validFormats, ", "))
-			log.Fatalf("Fatal: Invalid format %s\n", *audioExtractFormat)
+			log.Fatalf("Fatal: Invalid format %s\n", *audioFormat)
 		}
 
-		runner(audioExtractCmd.Arg(0), *audioExtractOutput, processors.AudioExtractor{AudioFormat: "." + *audioExtractFormat, CopyCover: *audioExtractCopyCover})
+		runner(audioExtractCmd.Arg(0), audioExtractCmd.Arg(1), processors.AudioExtractor{AudioFormat: "." + *audioFormat, CopyCover: *audioExtractCopyCover})
 	default:
 		log.Fatalln("Unknown command:", os.Args[1])
 	}
