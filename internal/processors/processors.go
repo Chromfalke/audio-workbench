@@ -162,7 +162,6 @@ func (extractor CoverImageExtractor) Run(file lib.Mediafile, outpath string) err
 	} else {
 		imagePath = strings.ReplaceAll(outpath, filepath.Ext(outpath), extractor.ImageFormat)
 	}
-	fmt.Println(imagePath)
 
 	hasCover, err := commands.ExtractCover(file, imagePath)
 	if err != nil {
@@ -191,6 +190,57 @@ func (setter CoverImageSetter) Run(file lib.Mediafile, outpath string) error {
 	err := commands.SetCover(file, setter.CoverImage)
 	if err != nil {
 		return fmt.Errorf("Failed to set %s as cover for %s: %s", setter.CoverImage, file.Path, err)
+	}
+
+	return nil
+}
+
+// Processor to extract the audio from a video
+type AudioExtractor struct {
+	AudioFormat string
+	CopyCover   bool
+}
+
+func (extractor AudioExtractor) Run(file lib.Mediafile, outpath string) error {
+	if !file.IsVideo {
+		return nil
+	}
+
+	var audioPath string
+	if outpath == fmt.Sprintf("temp%s", filepath.Ext(file.Path)) {
+		audioPath = strings.ReplaceAll(file.Path, filepath.Ext(file.Path), extractor.AudioFormat)
+	} else {
+		audioPath = strings.ReplaceAll(outpath, filepath.Ext(outpath), extractor.AudioFormat)
+	}
+
+	err := commands.ExtractAudio(file, audioPath)
+	if err != nil {
+		return fmt.Errorf("Failed to extract the audio from %s: %s", file.Path, err)
+	}
+
+	if extractor.CopyCover {
+		hasCover, err := commands.ExtractCover(file, "cover.jpg")
+		if err != nil {
+			return fmt.Errorf("Failed to extract the cover from %s: %s", file.Path, err)
+		}
+
+		if hasCover {
+			audioFile := lib.Mediafile{
+				Path:    audioPath,
+				IsOpus:  extractor.AudioFormat == ".opus",
+				IsVideo: false,
+			}
+			err := commands.SetCover(audioFile, "cover.jpg")
+			if err != nil {
+				return fmt.Errorf("Failed to set cover for %s: %s\n", file.Path, err)
+			}
+			err = os.Remove("cover.jpg")
+			if err != nil {
+				return fmt.Errorf("Unable to remove temporary cover.jpg file: %s", err)
+			}
+		} else {
+			fmt.Println("No cover could be extracted from ", file.Path)
+		}
 	}
 
 	return nil

@@ -146,7 +146,6 @@ func ExtractCover(file lib.Mediafile, imagePath string) (bool, error) {
 		// skip the first 10 seconds to avoid any intos or logos as best-effort
 		args := []string{"-ss", "10", "-i", file.Path, "-vframes:v", "1", "-update", "true", "-an", imagePath}
 		ffmpeg := exec.Command("ffmpeg", args...)
-		fmt.Println(ffmpeg.String())
 		err := ffmpeg.Run()
 		if err != nil {
 			return false, err
@@ -193,5 +192,13 @@ func SetCover(file lib.Mediafile, cover string) error {
 	}
 
 	err = os.Rename(tempfile, file.Path)
+	return err
+}
+
+// Extract the audio from a video.
+func ExtractAudio(file lib.Mediafile, audioPath string) error {
+	args := []string{"-i", file.Path, "-map", "0:a", audioPath}
+	ffmpeg := exec.Command("ffmpeg", args...)
+	err := ffmpeg.Run()
 	return err
 }

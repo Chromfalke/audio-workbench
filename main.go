@@ -35,6 +35,12 @@ func main() {
 	imgExtractFormat := imgExtractCmd.String("format", "jpg", "Output format")
 	imgExtractOutput := imgExtractCmd.String("output", "", "Output directory")
 
+	audioExtractCmd := flag.NewFlagSet("extract-audio", flag.ExitOnError)
+	audioExtractCmd.SetOutput(os.Stderr)
+	audioExtractFormat := audioExtractCmd.String("format", "mp3", "Output format")
+	audioExtractOutput := audioExtractCmd.String("output", "", "Output directory")
+	audioExtractCopyCover := audioExtractCmd.Bool("copy-cover", false, "Copy the cover from the video")
+
 	if len(os.Args) < 2 {
 		writer := tabwriter.NewWriter(os.Stderr, 15, 2, 1, ' ', 0)
 		fmt.Fprintln(writer, "Usage: audio-workbench <command> [<args>]")
@@ -43,7 +49,8 @@ func main() {
 		fmt.Fprintln(writer, "  convert\tConvert from one audio codec to another")
 		fmt.Fprintln(writer, "  resample\tResample the audio to a different sample rate")
 		fmt.Fprintln(writer, "  set-cover\tSet the cover image for an audio file")
-		fmt.Fprintln(writer, "  extract-cover\tExtract the cover image from an audio file")
+		fmt.Fprintln(writer, "  extract-cover\tExtract the cover image from a media file")
+		fmt.Fprintln(writer, "  extract-audio\tExtract the audio from a video")
 		fmt.Fprintln(writer, "  help\tPrints this help message")
 		writer.Flush()
 		os.Exit(1)
@@ -140,6 +147,24 @@ func main() {
 		}
 
 		runner(imgExtractCmd.Arg(0), *imgExtractOutput, processors.CoverImageExtractor{ImageFormat: "." + usedFormat})
+	case "extract-audio":
+		err := audioExtractCmd.Parse(os.Args[2:])
+		if err != nil {
+			log.Fatalln("Failed to parse flags: ", err)
+		}
+		if audioExtractCmd.Arg(0) == "" {
+			log.Println("Usage: audio-workbench extract-audio [<args>] <path>")
+			audioExtractCmd.PrintDefaults()
+			log.Fatalln("Fatal: You need to provide an input directory or file.")
+		}
+
+		validFormats := []string{"flac", "mp3", "opus", "wav"}
+		if !slices.Contains(validFormats, *audioExtractFormat) {
+			log.Println("Supported formats are: ", strings.Join(validFormats, ", "))
+			log.Fatalf("Fatal: Invalid format %s\n", *audioExtractFormat)
+		}
+
+		runner(audioExtractCmd.Arg(0), *audioExtractOutput, processors.AudioExtractor{AudioFormat: "." + *audioExtractFormat, CopyCover: *audioExtractCopyCover})
 	default:
 		log.Fatalln("Unknown command:", os.Args[1])
 	}
